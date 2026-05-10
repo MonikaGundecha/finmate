@@ -1,0 +1,5 @@
+finance.db
+*.db
+*.db-wal
+*.db-shm
+.env.local
