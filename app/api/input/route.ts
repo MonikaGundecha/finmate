@@ -156,6 +156,23 @@ async function buildInputContext(): Promise<string> {
   return lines.join('\n');
 }
 
+// Fire-and-forget: kick off coach-nudge generation after a transaction is saved.
+// Coach insights are spending-focused, so we only trigger this on plain transaction
+// saves — not goals, owed, budgets, etc. We deliberately do NOT await it so the save
+// response returns immediately; failures are logged but never surfaced to the user.
+//
+// The URL must be absolute: on the server `fetch('/api/coach')` has no origin to
+// resolve against. Prefer the deployment URL on Vercel, otherwise reuse the origin
+// of the incoming request (covers localhost and any other host).
+function triggerCoach(req: NextRequest): void {
+  const base = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : new URL(req.url).origin;
+  void fetch(`${base}/api/coach`, { method: 'POST' }).catch(err => {
+    console.error('Coach trigger failed:', err);
+  });
+}
+
 // Fast-path: detect clearly settle-shaped inputs and skip Haiku entirely.
 // Haiku is unreliable about settle_owed when amount/direction aren't stated, even with
 // explicit prompt rules. These patterns are unambiguous enough to route directly.
@@ -274,6 +291,7 @@ export async function POST(req: NextRequest) {
 
       if (type === 'transaction') {
         const saved = await insertTransaction(data as Transaction);
+        triggerCoach(req);
         return NextResponse.json({ action: 'saved', type, data: saved });
       }
 
