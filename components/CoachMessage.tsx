@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Loader2, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 
 interface CoachNudge {
   id: number;
@@ -16,21 +15,9 @@ interface CoachMessageProps {
 }
 
 export default function CoachMessage({ nudges, onDismissed, userName = 'there' }: CoachMessageProps) {
-  const [generating, setGenerating] = useState(false);
-
   const handleDismiss = async (id: number) => {
     await fetch(`/api/coach/${id}`, { method: 'PATCH' });
     onDismissed();
-  };
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    try {
-      await fetch('/api/coach', { method: 'POST' });
-      onDismissed();
-    } finally {
-      setGenerating(false);
-    }
   };
 
   return (
@@ -40,23 +27,11 @@ export default function CoachMessage({ nudges, onDismissed, userName = 'there' }
           <Sparkles className="w-4 h-4 text-blue-500" />
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Fin says</h2>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
-        >
-          {generating ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <RefreshCw className="w-3 h-3" />
-          )}
-          Ask Fin
-        </button>
       </div>
 
       {!nudges.length ? (
         <p className="text-sm text-slate-400">
-          Hey {userName}! Click &quot;Ask Fin&quot; to get personalized insights about your spending.
+          Hey {userName}! Personalized insights about your spending will show up here.
         </p>
       ) : (
         <div className="space-y-3">
