@@ -17,6 +17,15 @@ function getPool(): Pool {
   _pool = new Pool({
     connectionString,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  });
+  // A pooled client can be dropped by the server (idle timeout, restart, network
+  // blip) while sitting idle in the pool. pg surfaces these as an 'error' event on
+  // the pool; with no listener Node treats it as unhandled and crashes the process.
+  _pool.on('error', err => {
+    console.error('Unexpected pool error', err);
   });
   return _pool;
 }
