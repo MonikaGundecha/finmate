@@ -6,7 +6,7 @@ So I built something where you just type what happened. "Spent $45 at Trader Joe
 
 **Live demo:** https://finmate-pearl.vercel.app
 
-![FinMate Demo](./public/demo.gif)
+![FinMate Demo](./public/Demo.gif)
 
 ---
 
