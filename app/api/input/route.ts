@@ -10,6 +10,10 @@ import {
   deleteTransaction,
   findGoalsByHint,
   findTransactionsByHint,
+  advanceRecurringDue,
+  deactivateRecurring,
+  getRecurringById,
+  getRecurring,
   getGoals,
   getOwed,
   settleOwed,
@@ -54,6 +58,17 @@ interface SettleOwedPayload {
   date?: string;
 }
 
+interface RecurringPaymentPayload {
+  recurring_id?: number;
+  description?: string;
+  date?: string;
+}
+
+interface CancelRecurringPayload {
+  recurring_id?: number;
+  description?: string;
+}
+
 type SaveType =
   | 'transaction'
   | 'owed'
@@ -63,7 +78,9 @@ type SaveType =
   | 'delete_goal'
   | 'delete_transaction'
   | 'set_budget'
-  | 'settle_owed';
+  | 'settle_owed'
+  | 'recurring_payment'
+  | 'cancel_recurring';
 
 interface ParsedSave {
   action: 'save';
@@ -77,7 +94,9 @@ interface ParsedSave {
     | DeleteGoalPayload
     | DeleteTransactionPayload
     | SetBudgetPayload
-    | SettleOwedPayload;
+    | SettleOwedPayload
+    | RecurringPaymentPayload
+    | CancelRecurringPayload;
 }
 
 interface ParsedClarify {
@@ -86,6 +105,56 @@ interface ParsedClarify {
 }
 
 type Parsed = ParsedSave | ParsedClarify;
+
+// Build a snapshot of existing recurring bills, goals, and unsettled debts
+// to prepend to Haiku's system prompt. Haiku uses the ids to refer back when
+// classifying recurring_payment, cancel_recurring, and settle actions.
+function buildInputContext(): string {
+  const recurring = getRecurring(true);
+  const goals = getGoals();
+  const owed = getOwed(false);
+  const lines: string[] = [];
+
+  lines.push('EXISTING RECURRING BILLS:');
+  if (recurring.length === 0) {
+    lines.push('- (none)');
+  } else {
+    for (const r of recurring) {
+      lines.push(
+        `- ${r.name}, $${(r.amount / 100).toFixed(2)}/${r.frequency}, next due ${r.next_due}, id:${r.id}`,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('EXISTING GOALS:');
+  if (goals.length === 0) {
+    lines.push('- (none)');
+  } else {
+    for (const g of goals) {
+      lines.push(
+        `- ${g.name}, target $${(g.target_amount / 100).toFixed(2)}, saved $${((g.current_amount ?? 0) / 100).toFixed(2)}, id:${g.id}`,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('EXISTING UNSETTLED DEBTS:');
+  if (owed.length === 0) {
+    lines.push('- (none)');
+  } else {
+    for (const o of owed) {
+      const reasonPart = o.reason ? ` for ${o.reason}` : '';
+      if (o.direction === 'they_owe') {
+        lines.push(`- ${o.person} owes you $${(o.amount / 100).toFixed(2)}${reasonPart}, id:${o.id}`);
+      } else {
+        lines.push(`- You owe ${o.person} $${(o.amount / 100).toFixed(2)}${reasonPart}, id:${o.id}`);
+      }
+    }
+  }
+
+  return lines.join('\n');
+}
 
 // Fast-path: detect clearly settle-shaped inputs and skip Haiku entirely.
 // Haiku is unreliable about settle_owed when amount/direction aren't stated, even with
@@ -169,10 +238,13 @@ export async function POST(req: NextRequest) {
       ? `Today's date: ${today}\nPrevious question: "${context.question}"\nUser's answer: "${message}"\nOriginal input: "${context.original}"`
       : `Today's date: ${today}\n${message}`;
 
+    const dbContext = buildInputContext();
+    const fullSystem = `${dbContext}\n\n${CATEGORIZER_SYSTEM_PROMPT}`;
+
     const response = await anthropic.messages.create({
       model: HAIKU_MODEL,
       max_tokens: 1000,
-      system: CATEGORIZER_SYSTEM_PROMPT,
+      system: fullSystem,
       messages: [{ role: 'user', content: userContent }],
     });
 
@@ -203,6 +275,88 @@ export async function POST(req: NextRequest) {
       if (type === 'transaction') {
         const saved = insertTransaction(data as Transaction);
         return NextResponse.json({ action: 'saved', type, data: saved });
+      }
+
+      if (type === 'recurring_payment') {
+        const payload = data as RecurringPaymentPayload;
+        const recId = payload.recurring_id;
+        if (!recId) {
+          return NextResponse.json({
+            action: 'saved',
+            type,
+            data: {
+              logged: false,
+              message: "I couldn't tell which recurring bill that was.",
+            },
+          });
+        }
+        const entry = getRecurringById(recId);
+        if (!entry) {
+          return NextResponse.json({
+            action: 'saved',
+            type,
+            data: {
+              logged: false,
+              message: 'That recurring bill no longer exists.',
+            },
+          });
+        }
+        insertTransaction({
+          type: 'expense',
+          amount: entry.amount,
+          category: entry.category,
+          description: `${entry.name} payment`,
+          merchant: entry.name,
+          date: payload.date || today,
+          subcategory: null,
+          notes: 'Auto-logged from recurring_payment action',
+        });
+        const newDue = advanceRecurringDue(entry.id as number) ?? entry.next_due;
+        return NextResponse.json({
+          action: 'saved',
+          type,
+          data: {
+            logged: true,
+            name: entry.name,
+            amount: entry.amount,
+            next_due: newDue,
+          },
+        });
+      }
+
+      if (type === 'cancel_recurring') {
+        const payload = data as CancelRecurringPayload;
+        const recId = payload.recurring_id;
+        if (!recId) {
+          return NextResponse.json({
+            action: 'saved',
+            type,
+            data: {
+              cancelled: false,
+              message: "I couldn't tell which subscription to cancel.",
+            },
+          });
+        }
+        const entry = getRecurringById(recId);
+        if (!entry) {
+          return NextResponse.json({
+            action: 'saved',
+            type,
+            data: {
+              cancelled: false,
+              message: "That subscription doesn't exist or was already cancelled.",
+            },
+          });
+        }
+        deactivateRecurring(recId);
+        return NextResponse.json({
+          action: 'saved',
+          type,
+          data: {
+            cancelled: true,
+            name: entry.name,
+          },
+        });
       }
       if (type === 'owed') {
         const saved = insertOwed(data as Owed);

@@ -5,6 +5,7 @@ import { Check, Pencil, Trash2, X } from 'lucide-react';
 
 interface TransactionHistoryProps {
   currency: string;
+  refreshTrigger?: number;
 }
 
 function getCurrencySymbol(currency: string): string {
@@ -45,7 +46,7 @@ interface Transaction {
   merchant?: string | null;
 }
 
-export default function TransactionHistory({ currency }: TransactionHistoryProps) {
+export default function TransactionHistory({ currency, refreshTrigger }: TransactionHistoryProps) {
   const months = getLastNMonths(6);
   const [selectedMonth, setSelectedMonth] = useState(months[0]);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -53,6 +54,7 @@ export default function TransactionHistory({ currency }: TransactionHistoryProps
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Partial<Transaction>>({});
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -72,7 +74,7 @@ export default function TransactionHistory({ currency }: TransactionHistoryProps
     return () => {
       active = false;
     };
-  }, [selectedMonth, selectedCategory]);
+  }, [selectedMonth, selectedCategory, refreshTrigger]);
 
   const refetch = async () => {
     const params = new URLSearchParams({ month: selectedMonth });
@@ -83,8 +85,8 @@ export default function TransactionHistory({ currency }: TransactionHistoryProps
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this transaction?')) return;
     await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+    setConfirmingDeleteId(null);
     refetch();
   };
 
@@ -177,14 +179,33 @@ export default function TransactionHistory({ currency }: TransactionHistoryProps
                     {t.type === 'income' ? '+' : '-'}
                     {fmt(t.amount, currency)}
                   </span>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <button onClick={() => startEdit(t)} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => handleDelete(t.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
+                  {confirmingDeleteId === t.id ? (
+                    <div className="flex items-center gap-1.5 text-xs shrink-0">
+                      <span className="text-slate-500 dark:text-slate-400">Delete?</span>
+                      <button
+                        onClick={() => handleDelete(t.id)}
+                        className="font-medium text-red-500 hover:text-red-600"
+                      >
+                        Yes
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-600">/</span>
+                      <button
+                        onClick={() => setConfirmingDeleteId(null)}
+                        className="font-medium text-slate-400 hover:text-slate-500"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <button onClick={() => startEdit(t)} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button onClick={() => setConfirmingDeleteId(t.id)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

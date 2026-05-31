@@ -336,6 +336,92 @@ export function getRecurringThisMonth(): Recurring[] {
   `).all(endOfMonth) as Recurring[];
 }
 
+export function findRecurringByName(name: string): Recurring[] {
+  const hint = (name || '').toLowerCase().trim();
+  if (!hint) return [];
+  const all = getDb().prepare('SELECT * FROM recurring WHERE active = 1').all() as Recurring[];
+  return all.filter(r => {
+    const n = r.name.toLowerCase();
+    return n.includes(hint) || hint.includes(n);
+  });
+}
+
+export function advanceRecurringDue(id: number): string | null {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT next_due, frequency FROM recurring WHERE id = ?')
+    .get(id) as { next_due: string; frequency: string } | undefined;
+  if (!row) return null;
+  const d = new Date(`${row.next_due}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  switch (row.frequency) {
+    case 'daily':
+      d.setDate(d.getDate() + 1);
+      break;
+    case 'weekly':
+      d.setDate(d.getDate() + 7);
+      break;
+    case 'biweekly':
+      d.setDate(d.getDate() + 14);
+      break;
+    case 'monthly':
+      d.setMonth(d.getMonth() + 1);
+      break;
+    case 'yearly':
+      d.setFullYear(d.getFullYear() + 1);
+      break;
+    default:
+      return null;
+  }
+  const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  db.prepare('UPDATE recurring SET next_due = ? WHERE id = ?').run(next, id);
+  return next;
+}
+
+export function reverseRecurringDue(id: number): void {
+  const db = getDb();
+  const entry = db
+    .prepare('SELECT * FROM recurring WHERE id = ?')
+    .get(id) as Recurring | undefined;
+  if (!entry) return;
+  const d = new Date(entry.next_due);
+  if (entry.frequency === 'monthly') {
+    d.setMonth(d.getMonth() - 1);
+  } else if (entry.frequency === 'weekly') {
+    d.setDate(d.getDate() - 7);
+  } else if (entry.frequency === 'yearly') {
+    d.setFullYear(d.getFullYear() - 1);
+  } else if (entry.frequency === 'daily') {
+    d.setDate(d.getDate() - 1);
+  } else if (entry.frequency === 'biweekly') {
+    d.setDate(d.getDate() - 14);
+  } else {
+    return;
+  }
+  const newDate = d.toISOString().slice(0, 10);
+  db.prepare('UPDATE recurring SET next_due = ? WHERE id = ?').run(newDate, id);
+}
+
+export function deactivateRecurring(id: number): void {
+  getDb()
+    .prepare('UPDATE recurring SET active = 0 WHERE id = ?')
+    .run(id);
+}
+
+export function getRecurringById(id: number): Recurring | null {
+  const row = getDb()
+    .prepare('SELECT * FROM recurring WHERE id = ?')
+    .get(id) as Recurring | undefined;
+  return row ?? null;
+}
+
+export function getTransactionById(id: number): Transaction | null {
+  const row = getDb()
+    .prepare('SELECT * FROM transactions WHERE id = ?')
+    .get(id) as Transaction | undefined;
+  return row ?? null;
+}
+
 export function insertGoal(g: Omit<Goal, 'id' | 'created_at'>): Goal {
   const stmt = getDb().prepare(`
     INSERT INTO goals (name, target_amount, current_amount, deadline, category)

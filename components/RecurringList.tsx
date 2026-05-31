@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, Calendar } from 'lucide-react';
+import { AlertCircle, Calendar, X } from 'lucide-react';
 
 interface RecurringItem {
   id: number;
@@ -16,6 +16,7 @@ interface RecurringListProps {
   items: RecurringItem[];
   itemsMonth?: RecurringItem[];
   currency: string;
+  onChanged?: () => void;
 }
 
 function getCurrencySymbol(currency: string): string {
@@ -37,10 +38,17 @@ function daysUntil(dateStr: string): number {
   return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export default function RecurringList({ items, itemsMonth, currency }: RecurringListProps) {
+export default function RecurringList({ items, itemsMonth, currency, onChanged }: RecurringListProps) {
   const [view, setView] = useState<'week' | 'month'>('week');
+  const [confirmingCancelId, setConfirmingCancelId] = useState<number | null>(null);
   const monthList = itemsMonth ?? items;
   const visible = view === 'week' ? items : monthList;
+
+  const handleCancel = async (id: number) => {
+    await fetch(`/api/recurring/${id}`, { method: 'DELETE' });
+    setConfirmingCancelId(null);
+    onChanged?.();
+  };
 
   return (
     <div className="bg-white dark:bg-[#1a1a2e] rounded-2xl p-5 border border-[#e8e8f0] dark:border-[#2a2a40]">
@@ -91,10 +99,10 @@ export default function RecurringList({ items, itemsMonth, currency }: Recurring
                 key={item.id}
                 className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700 last:border-0"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   {isUrgent && <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.name}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{item.name}</p>
                     <p className="text-xs text-slate-400">
                       {days < 0
                         ? `Overdue ${-days}d`
@@ -108,7 +116,37 @@ export default function RecurringList({ items, itemsMonth, currency }: Recurring
                     </p>
                   </div>
                 </div>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmt(item.amount, currency)}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmt(item.amount, currency)}</span>
+                  {confirmingCancelId === item.id ? (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-500 dark:text-slate-400">Cancel this?</span>
+                      <button
+                        onClick={() => handleCancel(item.id)}
+                        className="font-medium text-red-500 hover:text-red-600"
+                      >
+                        Yes
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-600">/</span>
+                      <button
+                        onClick={() => setConfirmingCancelId(null)}
+                        className="font-medium text-slate-400 hover:text-slate-500"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingCancelId(item.id)}
+                      className="p-1 rounded text-gray-400 hover:text-red-500 transition-colors"
+                      aria-label={`Cancel ${item.name}`}
+                      title="Cancel subscription"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

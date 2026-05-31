@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle, HelpCircle, Loader2, Send } from 'lucide-react';
 
 interface InputBarProps {
   onSaved: () => void | Promise<void>;
   currency?: string;
+  prefillText?: string;
 }
 
 function getCurrencySymbol(currency: string): string {
@@ -73,6 +74,18 @@ interface SavedSettleOwed {
   direction?: 'i_owe' | 'they_owe';
   message?: string;
 }
+interface SavedRecurringPayment {
+  logged: boolean;
+  name?: string;
+  amount?: number;
+  next_due?: string;
+  message?: string;
+}
+interface SavedCancelRecurring {
+  cancelled: boolean;
+  name?: string;
+  message?: string;
+}
 type SavedData =
   | SavedTransaction
   | SavedOwed
@@ -81,7 +94,9 @@ type SavedData =
   | SavedGoalContribution
   | SavedDeletion
   | SavedBudget
-  | SavedSettleOwed;
+  | SavedSettleOwed
+  | SavedRecurringPayment
+  | SavedCancelRecurring;
 
 type ResponseState =
   | { type: 'idle' }
@@ -90,10 +105,17 @@ type ResponseState =
   | { type: 'saved'; dataType: string; data: SavedData }
   | { type: 'error'; message: string };
 
-export default function InputBar({ onSaved, currency = 'USD' }: InputBarProps) {
+export default function InputBar({ onSaved, currency = 'USD', prefillText }: InputBarProps) {
   const [input, setInput] = useState('');
   const [response, setResponse] = useState<ResponseState>({ type: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (prefillText !== undefined) {
+      setInput(prefillText);
+      inputRef.current?.focus();
+    }
+  }, [prefillText]);
 
   const submit = async (message: string, context?: ClarifyContext) => {
     if (!message.trim()) return;
@@ -192,6 +214,17 @@ export default function InputBar({ onSaved, currency = 'USD' }: InputBarProps) {
       return s.direction === 'i_owe'
         ? `Done — paid ${s.person} ${amt} and marked the debt settled.`
         : `Done — ${s.person} paid you back ${amt}, marked settled.`;
+    }
+    if (dataType === 'recurring_payment') {
+      const p = data as SavedRecurringPayment;
+      if (!p.logged) return p.message || `I couldn't log that recurring payment.`;
+      const amt = fmt(p.amount || 0, currency);
+      return `Got it! Logged ${amt} ${p.name} payment. Next due: ${p.next_due}.`;
+    }
+    if (dataType === 'cancel_recurring') {
+      const c = data as SavedCancelRecurring;
+      if (!c.cancelled) return c.message || `I couldn't cancel that subscription.`;
+      return `Done — cancelled the ${c.name} subscription. It won't appear in upcoming bills anymore.`;
     }
     return 'Saved!';
   };
