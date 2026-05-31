@@ -97,25 +97,25 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get('date') || getLocalYearMonth();
 
     const ranges = getDateRanges(period, date);
-    const currentTotals = getPeriodTotals(ranges.current.start, ranges.current.end);
-    const previousTotals = getPeriodTotals(ranges.previous.start, ranges.previous.end);
+    const currentTotals = await getPeriodTotals(ranges.current.start, ranges.current.end);
+    const previousTotals = await getPeriodTotals(ranges.previous.start, ranges.previous.end);
 
-    const categoryBreakdown = getSpendingByCategory(ranges.current.start, ranges.current.end);
-    const trendData = getTrendData(period, ranges.current.start, ranges.current.end);
-    const goals = getGoals();
-    const owedUnsettled = getOwed(false);
-    const owedHistory = getOwed(true);
-    const upcomingBills = getUpcomingRecurring(7);
-    const upcomingBillsMonth = getRecurringThisMonth();
-    const coachMessages = getUnreadCoachLogs(3);
-    const spendable = getSpendable();
-    const netWorth = getNetWorth();
-    const settings = getAllSettings();
+    const categoryBreakdown = await getSpendingByCategory(ranges.current.start, ranges.current.end);
+    const trendData = await getTrendData(period, ranges.current.start, ranges.current.end);
+    const goals = await getGoals();
+    const owedUnsettled = await getOwed(false);
+    const owedHistory = await getOwed(true);
+    const upcomingBills = await getUpcomingRecurring(7);
+    const upcomingBillsMonth = await getRecurringThisMonth();
+    const coachMessages = await getUnreadCoachLogs(3);
+    const spendable = await getSpendable();
+    const netWorth = await getNetWorth();
+    const settings = await getAllSettings();
 
     // Scale budget by period: month=1x, quarter=3x, ytd=months-covered.
     // For YTD viewing the current year this is months-elapsed-so-far; for prior
     // years it's 12. We derive it from the actual range so both cases work.
-    const rawBudget = getMonthlyBudget(ranges.current.start);
+    const rawBudget = await getMonthlyBudget(ranges.current.start);
     let monthlyBudget = rawBudget;
     let budgetPeriodLabel: 'Monthly Budget' | 'Quarterly Budget' | 'YTD Budget' =
       'Monthly Budget';

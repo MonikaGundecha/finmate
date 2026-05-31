@@ -13,7 +13,7 @@ interface Nudge {
 
 export async function POST() {
   try {
-    const summary = buildDBSummary();
+    const summary = await buildDBSummary();
 
     const response = await anthropic.messages.create({
       model: SONNET_MODEL,
@@ -35,7 +35,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Failed to parse coach response', raw: rawText }, { status: 500 });
     }
 
-    const saved = nudges.map(n => insertCoachLog({ message: n.message, trigger: n.trigger, read: 0 }));
+    const saved = await Promise.all(
+      nudges.map(n => insertCoachLog({ message: n.message, trigger: n.trigger, read: 0 })),
+    );
 
     return NextResponse.json({ nudges: saved });
   } catch (err) {

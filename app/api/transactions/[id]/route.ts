@@ -18,7 +18,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const updates = (await req.json()) as Partial<Transaction>;
-    updateTransaction(parseInt(id, 10), updates);
+    await updateTransaction(parseInt(id, 10), updates);
     return NextResponse.json({ success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error';
@@ -33,20 +33,20 @@ export async function DELETE(
   try {
     const { id } = await params;
     const txId = parseInt(id, 10);
-    const tx = getTransactionById(txId);
+    const tx = await getTransactionById(txId);
     if (tx) {
       const hints = [tx.description, tx.merchant].filter(
         (s): s is string => typeof s === 'string' && s.trim().length > 0,
       );
       for (const hint of hints) {
-        const matches = findRecurringByName(hint);
+        const matches = await findRecurringByName(hint);
         if (matches.length > 0 && matches[0].id !== undefined) {
-          reverseRecurringDue(matches[0].id);
+          await reverseRecurringDue(matches[0].id);
           break;
         }
       }
     }
-    deleteTransaction(txId);
+    await deleteTransaction(txId);
     return NextResponse.json({ success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error';

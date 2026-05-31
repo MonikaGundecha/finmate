@@ -28,12 +28,12 @@ interface SettleBody {
   confirmed_category?: string;
 }
 
-function recordSettlementTransaction(
+async function recordSettlementTransaction(
   item: { amount: number; person: string; reason?: string | null },
   category: string,
 ) {
   const today = new Date().toISOString().slice(0, 10);
-  insertTransaction({
+  await insertTransaction({
     date: today,
     description: `Settled: ${item.reason || item.person}`,
     amount: item.amount,
@@ -50,7 +50,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
 
-    const item = getOwedById(id);
+    const item = await getOwedById(id);
     if (!item) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -59,16 +59,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Two-step settle: explicit category confirmation
     if (body.confirmed_category) {
-      settleOwed(id);
+      await settleOwed(id);
       if (item.direction === 'i_owe') {
-        recordSettlementTransaction(item, body.confirmed_category);
+        await recordSettlementTransaction(item, body.confirmed_category);
       }
       return NextResponse.json({ success: true, category: body.confirmed_category });
     }
 
     // they_owe = repayment to user; settle without recording an expense
     if (item.direction === 'they_owe') {
-      settleOwed(id);
+      await settleOwed(id);
       return NextResponse.json({ success: true, category: null });
     }
 
@@ -96,8 +96,8 @@ If the reason is vague, missing, or could plausibly fit multiple categories, set
         result.category && CATEGORIES.includes(result.category) ? result.category : 'Other';
 
       if (result.confident && CATEGORIES.includes(suggested)) {
-        settleOwed(id);
-        recordSettlementTransaction(item, suggested);
+        await settleOwed(id);
+        await recordSettlementTransaction(item, suggested);
         return NextResponse.json({ success: true, category: suggested });
       }
 
@@ -110,8 +110,8 @@ If the reason is vague, missing, or could plausibly fit multiple categories, set
     } catch (err) {
       console.error('Haiku categorization failed:', err);
       // Fall back: settle and record under Debt Payment so the transaction isn't lost
-      settleOwed(id);
-      recordSettlementTransaction(item, 'Debt Payment');
+      await settleOwed(id);
+      await recordSettlementTransaction(item, 'Debt Payment');
       return NextResponse.json({ success: true, category: 'Debt Payment', fallback: true });
     }
   } catch (err) {

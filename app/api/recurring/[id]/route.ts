@@ -10,7 +10,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    deactivateRecurring(parseInt(id, 10));
+    await deactivateRecurring(parseInt(id, 10));
     return NextResponse.json({ status: 'ok' });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error';

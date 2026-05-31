@@ -109,10 +109,10 @@ type Parsed = ParsedSave | ParsedClarify;
 // Build a snapshot of existing recurring bills, goals, and unsettled debts
 // to prepend to Haiku's system prompt. Haiku uses the ids to refer back when
 // classifying recurring_payment, cancel_recurring, and settle actions.
-function buildInputContext(): string {
-  const recurring = getRecurring(true);
-  const goals = getGoals();
-  const owed = getOwed(false);
+async function buildInputContext(): Promise<string> {
+  const recurring = await getRecurring(true);
+  const goals = await getGoals();
+  const owed = await getOwed(false);
   const lines: string[] = [];
 
   lines.push('EXISTING RECURRING BILLS:');
@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
     if (!context) {
       const personHint = detectSettleIntent(message);
       if (personHint) {
-        const allOwed = getOwed(false);
+        const allOwed = await getOwed(false);
         const hint = personHint.toLowerCase();
         const matches = allOwed.filter(o => {
           const p = o.person.toLowerCase();
@@ -205,9 +205,9 @@ export async function POST(req: NextRequest) {
           const match =
             matches.find(o => o.direction === 'i_owe') ||
             matches.sort((a, b) => (a.id || 0) - (b.id || 0))[0];
-          settleOwed(match.id as number);
+          await settleOwed(match.id as number);
           if (match.direction === 'i_owe') {
-            insertTransaction({
+            await insertTransaction({
               type: 'expense',
               amount: match.amount,
               category: 'Lending',
@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
       ? `Today's date: ${today}\nPrevious question: "${context.question}"\nUser's answer: "${message}"\nOriginal input: "${context.original}"`
       : `Today's date: ${today}\n${message}`;
 
-    const dbContext = buildInputContext();
+    const dbContext = await buildInputContext();
     const fullSystem = `${dbContext}\n\n${CATEGORIZER_SYSTEM_PROMPT}`;
 
     const response = await anthropic.messages.create({
@@ -273,7 +273,7 @@ export async function POST(req: NextRequest) {
       const { type, data } = parsed;
 
       if (type === 'transaction') {
-        const saved = insertTransaction(data as Transaction);
+        const saved = await insertTransaction(data as Transaction);
         return NextResponse.json({ action: 'saved', type, data: saved });
       }
 
@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
             },
           });
         }
-        const entry = getRecurringById(recId);
+        const entry = await getRecurringById(recId);
         if (!entry) {
           return NextResponse.json({
             action: 'saved',
@@ -301,7 +301,7 @@ export async function POST(req: NextRequest) {
             },
           });
         }
-        insertTransaction({
+        await insertTransaction({
           type: 'expense',
           amount: entry.amount,
           category: entry.category,
@@ -311,7 +311,7 @@ export async function POST(req: NextRequest) {
           subcategory: null,
           notes: 'Auto-logged from recurring_payment action',
         });
-        const newDue = advanceRecurringDue(entry.id as number) ?? entry.next_due;
+        const newDue = (await advanceRecurringDue(entry.id as number)) ?? entry.next_due;
         return NextResponse.json({
           action: 'saved',
           type,
@@ -337,7 +337,7 @@ export async function POST(req: NextRequest) {
             },
           });
         }
-        const entry = getRecurringById(recId);
+        const entry = await getRecurringById(recId);
         if (!entry) {
           return NextResponse.json({
             action: 'saved',
@@ -348,7 +348,7 @@ export async function POST(req: NextRequest) {
             },
           });
         }
-        deactivateRecurring(recId);
+        await deactivateRecurring(recId);
         return NextResponse.json({
           action: 'saved',
           type,
@@ -359,23 +359,23 @@ export async function POST(req: NextRequest) {
         });
       }
       if (type === 'owed') {
-        const saved = insertOwed(data as Owed);
+        const saved = await insertOwed(data as Owed);
         return NextResponse.json({ action: 'saved', type, data: saved });
       }
       if (type === 'recurring') {
-        const saved = insertRecurring(data as Recurring);
+        const saved = await insertRecurring(data as Recurring);
         return NextResponse.json({ action: 'saved', type, data: saved });
       }
       if (type === 'goal') {
-        const saved = insertGoal(data as Goal);
+        const saved = await insertGoal(data as Goal);
         return NextResponse.json({ action: 'saved', type, data: saved });
       }
 
       if (type === 'goal_contribution') {
         const payload = data as GoalContributionPayload;
-        const matches = findGoalsByHint(payload.goal_hint);
+        const matches = await findGoalsByHint(payload.goal_hint);
         if (matches.length === 0) {
-          const goals = getGoals();
+          const goals = await getGoals();
           const list = goals.map(g => g.name).join(', ') || '(none)';
           return NextResponse.json({
             action: 'saved',
@@ -389,9 +389,9 @@ export async function POST(req: NextRequest) {
         // Pick most recent (highest id) when multiple match
         const matched = matches.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
         const newCurrent = (matched.current_amount || 0) + payload.amount;
-        updateGoalProgress(matched.id as number, newCurrent);
+        await updateGoalProgress(matched.id as number, newCurrent);
         // Record as expense for net worth tracking
-        insertTransaction({
+        await insertTransaction({
           type: 'expense',
           amount: payload.amount,
           category: 'Savings',
@@ -416,9 +416,9 @@ export async function POST(req: NextRequest) {
 
       if (type === 'delete_goal') {
         const payload = data as DeleteGoalPayload;
-        const matches = findGoalsByHint(payload.goal_hint);
+        const matches = await findGoalsByHint(payload.goal_hint);
         if (matches.length === 0) {
-          const goals = getGoals();
+          const goals = await getGoals();
           const list = goals.map(g => g.name).join(', ') || '(none)';
           return NextResponse.json({
             action: 'saved',
@@ -431,7 +431,7 @@ export async function POST(req: NextRequest) {
         }
         // Delete most recently created (highest id) — handles "duplicate" case
         const toDelete = matches.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
-        deleteGoal(toDelete.id as number);
+        await deleteGoal(toDelete.id as number);
         return NextResponse.json({
           action: 'saved',
           type,
@@ -456,7 +456,7 @@ export async function POST(req: NextRequest) {
             },
           });
         }
-        const allOwed = getOwed(false); // unsettled only
+        const allOwed = await getOwed(false); // unsettled only
         const matches = allOwed.filter(o => {
           const p = o.person.toLowerCase();
           return p.includes(hint) || hint.includes(p);
@@ -476,12 +476,12 @@ export async function POST(req: NextRequest) {
         const match =
           matches.find(o => o.direction === 'i_owe') ||
           matches.sort((a, b) => (a.id || 0) - (b.id || 0))[0];
-        settleOwed(match.id as number);
+        await settleOwed(match.id as number);
 
         // Only log a transaction when WE paid (i_owe). For they_owe, the user got money back —
         // settling alone is enough.
         if (match.direction === 'i_owe') {
-          insertTransaction({
+          await insertTransaction({
             type: 'expense',
             amount: match.amount,
             category: 'Lending',
@@ -511,11 +511,11 @@ export async function POST(req: NextRequest) {
         const firstOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
           .toISOString()
           .slice(0, 10);
-        setSetting('monthly_budget', String(amount), firstOfNextMonth);
+        await setSetting('monthly_budget', String(amount), firstOfNextMonth);
         // If no existing budget, also set effective today so the current period reflects it.
-        const existing = getMonthlyBudget();
+        const existing = await getMonthlyBudget();
         if (!existing) {
-          setSetting('monthly_budget', String(amount), new Date().toISOString().slice(0, 10));
+          await setSetting('monthly_budget', String(amount), new Date().toISOString().slice(0, 10));
         }
         return NextResponse.json({
           action: 'saved',
@@ -530,7 +530,7 @@ export async function POST(req: NextRequest) {
 
       if (type === 'delete_transaction') {
         const payload = data as DeleteTransactionPayload;
-        const matches = findTransactionsByHint(payload.description_hint);
+        const matches = await findTransactionsByHint(payload.description_hint);
         if (matches.length === 0) {
           return NextResponse.json({
             action: 'saved',
@@ -542,7 +542,7 @@ export async function POST(req: NextRequest) {
           });
         }
         const toDelete = matches[0]; // already ordered by created_at DESC
-        deleteTransaction(toDelete.id as number);
+        await deleteTransaction(toDelete.id as number);
         return NextResponse.json({
           action: 'saved',
           type,

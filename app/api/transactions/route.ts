@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const month = searchParams.get('month') || undefined;
     const category = searchParams.get('category') || undefined;
-    const transactions = getTransactions({ month, category });
+    const transactions = await getTransactions({ month, category });
     return NextResponse.json({ transactions });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error';
