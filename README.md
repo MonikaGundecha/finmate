@@ -1,97 +1,100 @@
-# FinMate — Your AI Finance Friend
+# FinMate
 
-Tracking finances has always been harder than it should be. Expenses pile up, you lose track of who owes who, savings goals feel abstract, and by the end of the month you are left wondering where the money went. Most finance apps feel like spreadsheets with extra steps — full of forms, dropdowns, and categories that require you to already know what you are doing.
+I built FinMate because I kept abandoning every finance app I tried. They all wanted me to fill out forms, pick categories, and remember to log things — which I never did consistently.
 
-FinMate takes a different approach. Just type what happened — "spent $12 on lunch", "Tanvi owes me $35 for the train", "put $200 toward my car fund" — and the app figures out the rest. No forms. No dropdowns. No categories to pick. It understands plain English and turns it into structured financial data automatically.
+So I built something where you just type what happened. "Spent $45 at Trader Joes." "Tanvi owes me $30 for dinner." "Paid Netflix." The app figures out the rest.
 
-The goal was simple: build something that feels less like a tool and more like a financially savvy friend who remembers everything, never judges, and occasionally reminds you when you are doing well.
+**Live demo:** https://finmate-pearl.vercel.app
 
 ![FinMate Demo](./public/demo.gif)
 
-## What It Does
+---
 
-- **Understands plain English** — type expenses, income, money owed, goals, recurring bills, or budget changes in any phrasing you like
-- **Tracks what matters** — net worth, spendable cash, goal progress, and budget usage all in one dashboard
-- **Spots trends** — income vs expenses over time, top spending categories, and where your money actually goes
-- **Keeps IOUs straight** — who owes you, who you owe, settle with one click and the app auto-categorizes the payment
-- **Coaches you gently** — an AI finance coach reads your activity and sends short, specific nudges rather than generic advice
-- **Respects your history** — change your budget in June and May data stays unchanged, always
+## What it does
 
-## Tech Stack
+- Log expenses, income, debts, and goals in plain English — no forms, no dropdowns
+- Dashboard shows net worth, spendable cash, goal progress, and budget in one place
+- Tracks who owes you and who you owe, nets them per person, settle with one click
+- Manages subscriptions — say "paid Netflix" and it logs the payment and updates the next due date automatically
+- After every transaction, an AI coach reads your spending and gives a short specific nudge (not generic advice)
+- Budget history is preserved — changing your budget in June doesn't mess up what May looked like
 
-- **Next.js 14** (App Router) + **TypeScript**
-- **SQLite** via `better-sqlite3`
-- **Tailwind CSS** with colorblind-safe Okabe-Ito chart palette
-- **Recharts** for trend lines, bar charts, and donut charts
-- **Anthropic Claude API** — Haiku for fast input parsing, Sonnet for coaching
+## Tech stack
 
-## Getting Started
+- **Next.js 14** + TypeScript — full stack in one project
+- **PostgreSQL** on Neon — serverless cloud database
+- **Tailwind CSS** + Recharts
+- **Claude Haiku** — parses and categorizes every input
+- **Claude Sonnet** — generates the coaching messages
+- **Vercel** — auto-deploys on every push to main
 
-1. Clone and install
+## Running it locally
+
 ```bash
 git clone https://github.com/MonikaGundecha/finmate.git
 cd finmate
 npm install
 ```
 
-2. Add your Anthropic API key
+Copy the env file and add your keys:
 ```bash
 cp .env.example .env.local
 ```
-Edit `.env.local` and paste your key from https://console.anthropic.com
 
-3. Start the app
+ANTHROPIC_API_KEY=your_key_here
+DATABASE_URL=your_postgres_connection_string
+
+Start the app:
 ```bash
 npm run dev
 ```
-Open http://localhost:3000
 
-4. Optional: load sample data
+To load sample data (5 months of transactions, goals, bills):
 ```bash
 npx tsx scripts/seed.ts
 ```
-This populates 5 months of realistic transactions, goals, recurring bills, and a monthly budget so the dashboard looks complete from day one. The script is safe to run multiple times — it skips itself if data already exists.
 
-## Things You Can Type
+## Example inputs
+spent $45 at Trader Joes
+got paid $4,200 salary
+Poorva owes me $20 for the train
+paid back Tanvi
+paid Netflix
+cancel gym subscription
+save $10,000 for a car by next year
+put $500 toward car goal
+set my monthly budget to $2,000
 
-- "spent $45 at Trader Joes"
-- "got paid $4,200 salary"
-- "Poorva owes me $20 for the train ticket"
-- "paid back Tanvi"
-- "save $10,000 for a car by next year"
-- "put $500 toward car goal"
-- "set my monthly budget to $2,000"
-- "Netflix $16 monthly"
-- "delete my duplicate car goal"
-- "Lakshmi paid me back"
 
-## How It Works Under the Hood
+## How it actually works
 
-Every input goes to Claude Haiku, which extracts the type, amount, category, date, and any people involved — then saves it to a local SQLite database instantly.
+When you type something, the app first checks if it matches a known pattern — "paid back [name]" or "paid [subscription]" — and handles it instantly without calling the AI. This makes the common stuff reliable regardless of how you phrase it.
 
-For settlement phrases like "paid back Tanvi", a server-side pattern matcher handles the request directly without calling the AI at all. This makes it instant and completely reliable regardless of how the sentence is phrased.
+For everything else, it calls Claude Haiku with a context block that includes your existing recurring bills, goals, and debts — so it knows to match "paid gym" to your existing $45 Gym entry rather than creating a new one.
 
-The coaching system is designed to be cost-efficient. Instead of sending raw transaction history to Claude on every request — which would be slow and expensive — the app pre-computes a compact financial summary of around 300 tokens and sends only that. This keeps API costs well under a few dollars a month for regular daily use.
+All amounts are stored as integer cents in the database and converted to dollars at the display layer. Sounds minor but it avoids a lot of subtle floating point bugs.
 
-All money is stored as integer cents in the database and converted to dollars only at the display layer. This avoids floating point issues entirely.
+The coaching runs in the background after each transaction — it sends Sonnet a ~300 token summary of your finances rather than the full transaction history, which keeps it fast and cheap.
 
-Budget history is also preserved correctly. Each budget change is stored with an effective date, so changing your budget in June does not alter what May looked like. Every past period reflects the budget that was actually in place at the time.
+## What's next
 
-## What Is Next
+- Mobile app — this input pattern works really well on mobile
+- Auth + multi-user support
+- Plaid integration for automatic bank sync
+- Shared expense tracking
 
-FinMate started as a personal project to solve a real problem. The foundation is solid and there is a clear path forward for making it more powerful and accessible to more people.
+## Env variables
 
-- **Mobile app** — the natural language input pattern works even better on mobile, where you can log expenses the moment they happen rather than trying to remember them later
-- **Multi-user support with authentication** — proper login so multiple people can each have their own private financial data, securely separated
-- **Bank and card sync** — connect real accounts via Plaid so manual entry becomes optional rather than required
-- **Smarter AI coaching** — longer memory across sessions, personalized goal tracking, and proactive alerts before overspending happens rather than after
-- **Cloud deployment** — the database abstraction layer is already built for migration to Postgres on Neon or Supabase, making Vercel deployment a straightforward next step
-- **Shared and split expenses** — track group spending, split bills automatically, and manage shared financial commitments with friends or family
-
-## Environment Variables
-
-| Variable | Description |
+| Variable | What it's for |
 |---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key (required) |
-| `DATABASE_PATH` | Path to SQLite file (default: `./finance.db`) |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `DATABASE_URL` | Postgres connection string |
 
+
+To paste it on GitHub directly:
+
+Go to github.com/MonikaGundecha/finmate
+Click on README.md
+Click the pencil icon (Edit)
+Select all and paste
+Click Commit changes
